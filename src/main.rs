@@ -1,54 +1,64 @@
 use crate::{camera::Camera, prelude::*};
 
 mod camera;
+mod components;
 mod map;
 mod map_builder;
-mod components;
 mod spawner;
 mod systems;
+mod turn_state;
 
 mod prelude {
+    pub use crate::camera::*;
+    pub use crate::components::*;
+    pub use crate::spawner::*;
+    pub use crate::systems::*;
     pub use bracket_lib::prelude::*;
-    pub use legion::* ; 
-    pub use crate::spawner::* ; 
-    pub use legion::world::SubWorld ; 
-    pub use crate::systems::* ;
-    pub use legion::systems::CommandBuffer ;
-    pub use crate::components::* ; 
-    pub use crate::camera::* ; 
+    pub use legion::systems::CommandBuffer;
+    pub use legion::world::SubWorld;
+    pub use legion::*;
     pub const SCREEN_WIDTH: i32 = 80;
     pub const SCREEN_HEIGHT: i32 = 50;
     pub const DISPLAY_WIDTH: i32 = SCREEN_WIDTH / 2;
     pub const DISPLAY_HEIGHT: i32 = SCREEN_HEIGHT / 2;
     pub use crate::map::*;
     pub use crate::map_builder::*;
+    pub use crate::turn_state::*;
 }
 
 struct State {
-    ecs: World , 
-    resources : Resources , 
-    systems : Schedule,
+    ecs: World,
+    resources: Resources,
+    input_systems: Schedule,
+    player_systems: Schedule,
+    monster_system: Schedule,
+    render_systems: Schedule,
 }
 
 impl State {
     fn new() -> Self {
-        let mut ecs = World::default() ; 
+        let mut ecs = World::default();
         let mut rng = RandomNumberGenerator::new();
-        let mut resources = Resources::default() ; 
-        let map_builder = MapBuilder::new(&mut rng);  
+        let mut resources = Resources::default();
+        let map_builder = MapBuilder::new(&mut rng);
         spawn_player(&mut ecs, map_builder.player_start);
-        map_builder.rooms 
-                    .iter()
-                    .skip(1)
-                    .map(|r| r.center())
-                    .for_each(|pos| spawn_monster(&mut ecs, &mut rng, pos));
-        
+        map_builder
+            .rooms
+            .iter()
+            .skip(1)
+            .map(|r| r.center())
+            .for_each(|pos| spawn_monster(&mut ecs, &mut rng, pos));
+
         resources.insert(map_builder.map);
         resources.insert(Camera::new(map_builder.player_start));
+        resources.insert(TurnState::AwaitingInput);
         Self {
-            ecs , 
-            resources , 
-            systems: build_scheduler() 
+            ecs,
+            resources,
+            input_systems: build_input_scheduler(),
+            player_systems: build_player_scheduler(),
+            monster_system: build_monster_scheduler(),
+            render_systems: build_render_scheduler(),
         }
     }
 }
@@ -59,12 +69,26 @@ impl GameState for State {
         ctx.cls();
         ctx.set_active_console(1);
         ctx.cls();
-        //Execute systems 
+        //Execute systems
         self.resources.insert(ctx.key);
-        self.systems.execute(&mut self.ecs, &mut self.resources);
-        //Render Draw buffer
-        self.systems.execute(&mut self.ecs , &mut self.resources);
-        render_draw_buffer(ctx).expect("Render error") ; 
+        let current_state = self.resources.get::<TurnState>().unwrap().clone();
+        match current_state {
+            TurnState::AwaitingInput => self
+                .input_systems
+                .execute(&mut self.ecs, &mut self.resources),
+            TurnState::PlayerTurn => {
+                self.player_systems
+                    .execute(&mut self.ecs, &mut self.resources);
+            }
+
+            TurnState::MonsterTurn => {
+                self.monster_system
+                    .execute(&mut self.ecs, &mut self.resources);
+            }
+        }
+        self.render_systems
+            .execute(&mut self.ecs, &mut self.resources);
+        render_draw_buffer(ctx).expect("Render error");
     }
 }
 
