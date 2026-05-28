@@ -7,10 +7,14 @@ mod map_render;
 mod movement;
 mod player_input;
 mod random_move;
+mod hud;
+mod tooltips;
 
 pub fn build_input_scheduler() -> Schedule {
     Schedule::builder()
         .add_system(player_input::player_input_system())
+        .add_system(hud::hud_system())
+        .add_system(tooltips::tooltips_system())
         .build()
 }
 
@@ -21,6 +25,8 @@ pub fn build_player_scheduler() -> Schedule {
         .add_system(collision::collisions_system())
         .flush()
         .add_system(end_turn::end_turn_system())
+        .add_system(hud::hud_system())
+        .add_system(tooltips::tooltips_system())
         .build()
 }
 
@@ -32,6 +38,8 @@ pub fn build_monster_scheduler() -> Schedule {
         .flush()
         .add_system(collision::collisions_system())
         .flush()
+        .add_system(end_turn::end_turn_system())
+        .add_system(hud::hud_system())
         .add_system(end_turn::end_turn_system())
         .build()
 }
